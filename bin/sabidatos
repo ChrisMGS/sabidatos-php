@@ -1,0 +1,105 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// Sabidatos para PHP sin framework (o cualquier sistema PHP que no sea Laravel).
+//
+//     vendor/bin/sabidatos install OPIA-XXXX-XXXX-XXXX-XXXX [--env=.env] [--reemplazar] [--si]
+//     vendor/bin/sabidatos doctor [--env=.env]
+//     vendor/bin/sabidatos roles ROL1 ROL2 ... [--env=.env]
+//
+// Con Laravel se usan los comandos de artisan (sabidatos:install, sabidatos:doctor).
+
+use Trelintech\Sabidatos\Cliente;
+use Trelintech\Sabidatos\Config;
+use Trelintech\Sabidatos\Doctor;
+use Trelintech\Sabidatos\Instalador;
+
+foreach ([__DIR__ . '/../../../autoload.php', __DIR__ . '/../vendor/autoload.php'] as $autoload) {
+    if (is_file($autoload)) {
+        require $autoload;
+        break;
+    }
+}
+
+$args = array_slice($argv, 1);
+$orden = array_shift($args) ?? '';
+$opciones = [];
+$posicionales = [];
+foreach ($args as $a) {
+    if (preg_match('/^--([a-z]+)(?:=(.*))?$/D', $a, $m)) {
+        $opciones[$m[1]] = $m[2] ?? true;
+    } else {
+        $posicionales[] = $a;
+    }
+}
+$env = (string) ($opciones['env'] ?? getcwd() . DIRECTORY_SEPARATOR . '.env');
+const ADAPTADOR = 'sabidatos-php/' . Config::VERSION;
+
+/** Lee las variables de Sabidatos de un .env sin cargar el resto. */
+function configDe(string $archivo): Config
+{
+    $valores = [];
+    foreach (is_file($archivo) ? (file($archivo, FILE_IGNORE_NEW_LINES) ?: []) : [] as $l) {
+        if (preg_match('/^\s*(SABIDATOS_[A-Z_]+)\s*=\s*"?([^"#]*)"?\s*$/D', $l, $m)) {
+            $valores[$m[1]] = trim($m[2]);
+        }
+    }
+
+    return Config::desde($valores);
+}
+
+function doctor(string $env): int
+{
+    $d = new Doctor(configDe($env), ADAPTADOR);
+    foreach ($d->comprobar() as [$que, $ok, $detalle]) {
+        echo '  ' . ($ok ? 'PASS' : 'FAIL') . "  {$que}" . ($detalle ? "  — {$detalle}" : '') . PHP_EOL;
+    }
+    echo PHP_EOL . ($d->listo() ? 'READY' : 'NOT READY') . PHP_EOL;
+
+    return $d->listo() ? 0 : 1;
+}
+
+switch ($orden) {
+    case 'install':
+        $codigo = $posicionales[0] ?? '';
+        $i = new Instalador($env, (string) ($opciones['url'] ?? Instalador::URL_POR_DEFECTO));
+        echo PHP_EOL . 'Esto es lo que se va a hacer:' . PHP_EOL;
+        foreach ($i->plan() as $p) {
+            echo "  - {$p}" . PHP_EOL;
+        }
+        if (!isset($opciones['si'])) {
+            echo PHP_EOL . '¿Continuar? [s/N] ';
+            if (!in_array(strtolower(trim((string) fgets(STDIN))), ['s', 'si', 'sí', 'y', 'yes'], true)) {
+                echo 'No se ha cambiado nada.' . PHP_EOL;
+                exit(1);
+            }
+        }
+        try {
+            $r = $i->aplicar($codigo, ADAPTADOR, isset($opciones['reemplazar']));
+        } catch (\RuntimeException $e) {
+            fwrite(STDERR, $e->getMessage() . PHP_EOL . 'No se ha cambiado nada.' . PHP_EOL);
+            exit(1);
+        }
+        echo 'Conectado' . ($r['cliente'] ? " como {$r['cliente']}" : '') . '.' . PHP_EOL;
+        if ($r['copia']) {
+            echo "  Copia del .env anterior: {$r['copia']}" . PHP_EOL;
+        }
+        exit(doctor($env));
+
+    case 'doctor':
+        exit(doctor($env));
+
+    case 'roles':
+        $roles = array_values(array_filter($posicionales, static fn ($r) => (bool) preg_match('/^[A-Za-z0-9._-]{1,64}$/D', $r)));
+        [$codigo, $texto] = (new Cliente(configDe($env), ADAPTADOR))
+            ->pedir('PUT', '/roles', ['roles' => array_map(static fn ($r) => ['code' => $r, 'name' => $r], array_slice($roles, 0, 200))]);
+        echo $codigo === 200 ? count($roles) . ' roles enviados; entran sin permisos.' . PHP_EOL : "No se pudieron enviar (HTTP {$codigo})." . PHP_EOL;
+        exit($codigo === 200 ? 0 : 1);
+
+    default:
+        echo "Uso:\n  sabidatos install OPIA-XXXX-XXXX-XXXX-XXXX [--env=.env] [--reemplazar] [--si]\n"
+            . "  sabidatos doctor [--env=.env]\n  sabidatos roles ROL1 ROL2 ... [--env=.env]\n";
+        exit($orden === '' ? 0 : 2);
+}

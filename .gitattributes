@@ -1,0 +1,5 @@
+* text=auto eol=lf
+recursos/operia-assistant.js -text
+recursos/operia-assistant.js.sri -text
+/tests export-ignore
+/phpunit.xml export-ignore

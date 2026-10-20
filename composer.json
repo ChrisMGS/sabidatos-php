@@ -1,0 +1,38 @@
+{
+    "name": "trelintech/sabidatos",
+    "description": "Asistente de Sabidatos dentro de su propio sistema: instalación con un código, roles de su sistema y firma servidor a servidor.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["sabidatos", "asistente", "laravel", "embebido"],
+    "require": {
+        "php": ">=8.1",
+        "ext-curl": "*",
+        "ext-json": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5"
+    },
+    "suggest": {
+        "laravel/framework": "Con Laravel 10 o superior se instala solo: rutas, botón y comandos."
+    },
+    "autoload": {
+        "psr-4": {
+            "Trelintech\\Sabidatos\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Trelintech\\Sabidatos\\Tests\\": "tests/"
+        }
+    },
+    "bin": ["bin/sabidatos"],
+    "extra": {
+        "laravel": {
+            "providers": ["Trelintech\\Sabidatos\\Laravel\\SabidatosServiceProvider"]
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable"
+}
